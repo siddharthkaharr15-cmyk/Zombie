@@ -11,6 +11,9 @@ data class GameStats(
     val regenUpgradeLevel: Int = 1,
     val outpostUpgradeLevel: Int = 1,
     val highestWaveReached: Int = 1,
+    val highestWaveNormal: Int = 1,
+    val highestWaveHardcore: Int = 1,
+    val highestWaveNightmare: Int = 1,
     val lifetimeEarnings: Long = 0L,
     val totalZombiesKilled: Int = 0,
     val totalMoneyEarned: Long = 0L,
@@ -22,5 +25,13 @@ data class GameStats(
     val lastDailyRewardTime: Long = 0L,
     val consecutiveDailyDays: Int = 0,
     val completedAchievementsMask: Int = 0,
-    val performanceModeOn: Boolean = false
+    val performanceModeOn: Boolean = false,
+    val bankDollars: Long = 0L,
+    val ownedWeaponsCSV: String = "Ranger P1,Crusher 12G,AR-X Defender,Vulcan M1",
+    val ownedTurretsCSV: String = "Basic Turret",
+    val equippedPistol: String = "Ranger P1",
+    val equippedShotgun: String = "Crusher 12G",
+    val equippedRifle: String = "AR-X Defender",
+    val equippedMinigun: String = "Vulcan M1",
+    val equippedTurretsCSV: String = "Basic Turret"
 )

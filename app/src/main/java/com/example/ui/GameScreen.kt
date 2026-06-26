@@ -2,6 +2,9 @@ package com.example.ui
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import com.example.AdManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -10,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,6 +68,8 @@ fun GameScreen(
     viewModel: GameViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
     val textMeasurer = rememberTextMeasurer()
     val scope = rememberCoroutineScope()
     
@@ -159,7 +165,10 @@ fun GameScreen(
 
                 // Small floating pill to toggle checklist guidelines
                 Button(
-                    onClick = { showGuidanceOverlay = true },
+                    onClick = { 
+                        com.example.audio.GameAudioSynth.playButtonClick()
+                        showGuidanceOverlay = true 
+                    },
                     modifier = Modifier
                         .padding(top = 96.dp, start = 14.dp)
                         .size(42.dp)
@@ -183,7 +192,10 @@ fun GameScreen(
                     AlertDialog(
                         onDismissRequest = { showGuidanceOverlay = false },
                         confirmButton = {
-                            TextButton(onClick = { showGuidanceOverlay = false }) {
+                            TextButton(onClick = { 
+                                com.example.audio.GameAudioSynth.playButtonClick()
+                                showGuidanceOverlay = false 
+                            }) {
                                 Text("CLOSE", color = Color(0xFFFFC107), fontWeight = FontWeight.Bold)
                             }
                         },
@@ -213,7 +225,65 @@ fun RenderStateScreens(viewModel: GameViewModel) {
         GameState.GAME_OVER -> {
             GameOverOverlay(viewModel = viewModel)
         }
+        GameState.PLAYING -> {
+            if (viewModel.isPaused) {
+                PauseMenuOverlay(viewModel = viewModel)
+            }
+        }
         else -> {}
+    }
+}
+
+@Composable
+fun PauseMenuOverlay(viewModel: GameViewModel) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(enabled = false) {}
+            .testTag("pause_menu_overlay"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .shadow(12.dp, RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xFF1E293B))
+                .border(2.dp, Color(0xFF334155), RoundedCornerShape(24.dp))
+                .padding(32.dp)
+        ) {
+            Text(
+                text = "PAUSED",
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { viewModel.togglePause() },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFCC))
+            ) {
+                Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+
+            Button(
+                onClick = {
+                    viewModel.togglePause()
+                    viewModel.abandonRun()
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744))
+            ) {
+                Text("EXIT RUN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
     }
 }
 
@@ -452,48 +522,37 @@ fun GameplayCanvas(
         drawContext.canvas.translate(offsetX + sX, offsetY + sY)
         drawContext.canvas.scale(scale, scale)
 
-        // 1. Draw Field Background (Tactical Dark Ground Grid lattice with concrete textures)
-        drawRect(Color(0xFF0C0E14), topLeft = Offset.Zero, size = Size(gameW, gameH))
+        // 1. Draw Field Background (Realistic dark asphalt/dirt ground)
+        drawRect(Color(0xFF141416), topLeft = Offset.Zero, size = Size(gameW, gameH)) // Very dark dirt/asphalt
         
-        val linePaintColor = Color(0x06FFFFFF)
-        for (i in 0..1200 step 60) {
-            drawLine(linePaintColor, start = Offset(0f, i.toFloat()), end = Offset(gameW, i.toFloat()), strokeWidth = 1f)
-        }
-        for (j in 0..800 step 60) {
-            drawLine(linePaintColor, start = Offset(j.toFloat(), 0f), end = Offset(j.toFloat(), gameH), strokeWidth = 1f)
-        }
-
-        // Draw tactical flooring concrete plate borders
-        val plateBorderColor = Color(0x0A00FFCC)
-        for (x in 0..800 step 200) {
-            drawLine(plateBorderColor, start = Offset(x.toFloat(), 0f), end = Offset(x.toFloat(), gameH), strokeWidth = 1.5f)
-        }
-        for (y in 0..1200 step 200) {
-            drawLine(plateBorderColor, start = Offset(0f, y.toFloat()), end = Offset(gameW, y.toFloat()), strokeWidth = 1.5f)
-        }
-
         // 2. Draw Post-Apocalyptic Ground Textures & Environmental Details
-        // A. Cracked Asphalt Plates procedural details
-        val crackColor = Color(0x18000000)
+        // A. Subtle cracks and road markings
+        val roadMarkingColor = Color(0x1F9E9E9E)
+        for (y in 100..1100 step 150) {
+            drawRect(roadMarkingColor, topLeft = Offset(gameW/2f - 4f, y.toFloat()), size = Size(8f, 60f)) // Dashed center line
+        }
+        
+        val crackColor = Color(0x15000000)
         listOf(Offset(140f, 220f), Offset(640f, 980f), Offset(150f, 850f), Offset(680f, 320f)).forEach { crackCentroid ->
             drawCircle(Color(0x0C000000), radius = 110f, center = crackCentroid)
-            for (i in 0 until 5) {
-                val angle = i * 72f * PI.toFloat() / 180f
+            for (i in 0 until 6) {
+                val angle = i * 60f * PI.toFloat() / 180f + (crackCentroid.x % 1f)
+                val breakLength = 80f + (crackCentroid.y % 20f)
                 drawLine(
                     color = crackColor,
                     start = crackCentroid,
-                    end = Offset(crackCentroid.x + cos(angle) * 75f, crackCentroid.y + sin(angle) * 75f),
-                    strokeWidth = 2f
+                    end = Offset(crackCentroid.x + cos(angle) * breakLength, crackCentroid.y + sin(angle) * breakLength),
+                    strokeWidth = 3f
                 )
             }
         }
 
-        // B. Mud / Toxic Bio Slime / Radioactive Chemical Spills on ground
-        drawCircle(Color(0x0B5C401F), radius = 120f, center = Offset(180f, 880f)) // Mud
-        drawCircle(Color(0x0F2E7D32), radius = 135f, center = Offset(620f, 280f)) // Green radioactive pool
-        drawCircle(Color(0x094A148C), radius = 115f, center = Offset(650f, 750f)) // Mutated violet mold
+        // B. Realistic mud puddles / dried blood / debris
+        drawCircle(Color(0x11211b15), radius = 120f, center = Offset(180f, 880f)) // Dirt patch
+        drawCircle(Color(0x1A141210), radius = 135f, center = Offset(620f, 280f)) // Charred Ground
+        drawCircle(Color(0x0E1A0F0D), radius = 115f, center = Offset(650f, 750f)) // Very old dried blood
 
-        // C. Procedural Grass/Wild weeds protruding through concrete cracks
+        // C. Dead vegetation
         val grassPoints = listOf(
             Offset(90f, 120f), Offset(110f, 130f),
             Offset(670f, 200f), Offset(690f, 210f),
@@ -502,133 +561,97 @@ fun GameplayCanvas(
             Offset(300f, 140f), Offset(510f, 970f)
         )
         grassPoints.forEach { pt ->
-            drawLine(Color(0x2E4CAF50), start = pt, end = Offset(pt.x - 3f, pt.y - 10f), strokeWidth = 2f)
-            drawLine(Color(0x2E4CAF50), start = pt, end = Offset(pt.x + 4f, pt.y - 8f), strokeWidth = 2f)
-            drawLine(Color(0x1F81C784), start = pt, end = Offset(pt.x + 1f, pt.y - 12f), strokeWidth = 1.5f)
+            drawLine(Color(0x3B3D3B2B), start = pt, end = Offset(pt.x - 3f, pt.y - 10f), strokeWidth = 2f)
+            drawLine(Color(0x3B3D3B2B), start = pt, end = Offset(pt.x + 4f, pt.y - 8f), strokeWidth = 2f)
+            drawLine(Color(0x28474229), start = pt, end = Offset(pt.x + 1f, pt.y - 12f), strokeWidth = 1.5f)
         }
 
         // D. Persistent Blood Pool Splatter Decals (Drawn directly on ground)
         viewModel.decals.forEach { decal ->
-            val poolAlpha = 0.65f
+            val poolAlpha = 0.55f
             val baseSplatterColor = Color(decal.colorHex).copy(alpha = poolAlpha)
-            val darkCenterColor = Color(0xFF1B0306).copy(alpha = 0.8f)
+            val darkCenterColor = Color(0xFF1B0306).copy(alpha = 0.7f)
 
-            // Draw primary central thick pool
-            drawCircle(
-                color = baseSplatterColor,
-                radius = decal.size * 0.42f,
-                center = Offset(decal.x, decal.y)
-            )
+            drawCircle(baseSplatterColor, radius = decal.size * 0.45f, center = Offset(decal.x, decal.y))
+            drawCircle(darkCenterColor, radius = decal.size * 0.25f, center = Offset(decal.x, decal.y))
 
-            // Draw concentric dark/coagulated details
-            drawCircle(
-                color = darkCenterColor,
-                radius = decal.size * 0.22f,
-                center = Offset(decal.x, decal.y)
-            )
-
-            // Draw surrounding satellite splatter spray droplets
             for (i in 0 until 4) {
                 val rot = (decal.angle + i * 90f) * PI.toFloat() / 180f
-                val dist = decal.size * 0.58f
-                val dropX = decal.x + cos(rot) * dist
-                val dropY = decal.y + sin(rot) * dist
+                val dist = decal.size * 0.6f
                 drawCircle(
                     color = baseSplatterColor,
-                    radius = decal.size * 0.16f,
-                    center = Offset(dropX, dropY)
+                    radius = decal.size * 0.15f,
+                    center = Offset(decal.x + cos(rot) * dist, decal.y + sin(rot) * dist)
                 )
             }
         }
 
-        // E. Scattered Steel/Industrial Barricades (hazard warning stripes)
-        val debrisLocations = listOf(
-            Offset(110f, 380f),
-            Offset(730f, 480f),
-            Offset(220f, 140f),
-            Offset(590f, 1020f)
+        // E. Scattered Concrete Jersey Barriers & Crates
+        val barricades = listOf(
+            Offset(220f, 140f) to 15f,
+            Offset(110f, 380f) to -20f,
+            Offset(730f, 480f) to 10f,
+            Offset(590f, 1020f) to -15f
         )
-        debrisLocations.forEach { loc ->
-            // Drop shadow
-            drawRect(Color(0x44000000), topLeft = Offset(loc.x - 14f, loc.y - 10f), size = Size(28f, 28f))
-            // Concrete Block
-            drawRect(
-                color = Color(0xFF1E293B),
-                topLeft = Offset(loc.x - 13f, loc.y - 13f),
-                size = Size(26f, 26f)
-            )
-            drawRect(
-                color = Color(0xFF475569),
-                topLeft = Offset(loc.x - 11f, loc.y - 11f),
-                size = Size(22f, 22f)
-            )
-            // Hazard striping diagonals
-            drawLine(Color(0xFFE2E8F0), start = Offset(loc.x - 11f, loc.y - 11f), end = Offset(loc.x + 11f, loc.y + 11f), strokeWidth = 2.5f)
-            drawLine(Color(0xFFFFA000), start = Offset(loc.x - 11f, loc.y + 11f), end = Offset(loc.x + 11f, loc.y - 11f), strokeWidth = 2.5f)
+        barricades.forEach { (loc, rot) ->
+            drawContext.canvas.save()
+            drawContext.canvas.translate(loc.x, loc.y)
+            drawContext.canvas.rotate(rot)
+            
+            // Heavy shadow
+            drawRect(Color(0x66000000), topLeft = Offset(-18f, -6f), size = Size(36f, 16f))
+            // Concrete Barrier
+            drawRoundRect(Color(0xFF5E6061), topLeft = Offset(-20f, -10f), size = Size(40f, 12f), cornerRadius = CornerRadius(2f))
+            drawRoundRect(Color(0xFF86888A), topLeft = Offset(-18f, -8f), size = Size(36f, 8f), cornerRadius = CornerRadius(1f))
+            
+            drawContext.canvas.restore()
+        }
+        
+        val crates = listOf(Offset(130f, 360f), Offset(200f, 160f))
+        crates.forEach { loc ->
+            drawRect(Color(0x55000000), topLeft = Offset(loc.x - 13f, loc.y - 13f), size = Size(26f, 26f))
+            drawRect(Color(0xFF4A3828), topLeft = Offset(loc.x - 14f, loc.y - 14f), size = Size(28f, 28f))
+            drawRect(Color(0xFF38291A), topLeft = Offset(loc.x - 12f, loc.y - 12f), size = Size(24f, 24f))
+            drawLine(Color(0xFF261D12), Offset(loc.x - 12f, loc.y - 12f), Offset(loc.x + 12f, loc.y + 12f), strokeWidth = 2f)
+            drawLine(Color(0xFF261D12), Offset(loc.x - 12f, loc.y + 12f), Offset(loc.x + 12f, loc.y - 12f), strokeWidth = 2f)
         }
 
-        // F. Wrecked Rusted Military Cars (detailed Top-Down top views)
-        val carPositions = listOf(
-            Offset(105f, 1050f),
-            Offset(695f, 160f)
-        )
+        // F. Wrecked Rusted Military Cars (realistic)
+        val carPositions = listOf(Offset(105f, 1050f), Offset(695f, 160f))
         carPositions.forEach { car ->
+            drawContext.canvas.save()
+            drawContext.canvas.translate(car.x, car.y)
+            drawContext.canvas.rotate(if (car.y > 600f) 15f else -25f)
+            
             // Shadow
-            drawRoundRect(
-                color = Color(0x66000000),
-                topLeft = Offset(car.x - 22f, car.y - 34f),
-                size = Size(46f, 72f),
-                cornerRadius = CornerRadius(8f)
-            )
+            drawRoundRect(Color(0x77000000), topLeft = Offset(-28f, -42f), size = Size(56f, 84f), cornerRadius = CornerRadius(8f))
             // Rusty body chassis
-            drawRoundRect(
-                color = Color(0xFF1C1917),
-                topLeft = Offset(car.x - 20f, car.y - 32f),
-                size = Size(40f, 66f),
-                cornerRadius = CornerRadius(6f)
-            )
-            // Metallic grill color
-            drawRoundRect(
-                color = Color(0xFF78350F), // Deep rust carbon ochre
-                topLeft = Offset(car.x - 17f, car.y - 29f),
-                size = Size(34f, 60f),
-                cornerRadius = CornerRadius(4f)
-            )
-            // Windshield and side windows top look outline
-            drawRect(
-                color = Color(0xCC111827),
-                topLeft = Offset(car.x - 13f, car.y - 12f),
-                size = Size(26f, 22f)
-            )
-            drawRect(
-                color = Color(0xAA374151),
-                topLeft = Offset(car.x - 10f, car.y - 10f),
-                size = Size(20f, 18f)
-            )
-            // Red taillights
-            drawCircle(Color(0xFFEF4444), radius = 3.5f, center = Offset(car.x - 13f, car.y - 28f))
-            drawCircle(Color(0xFFEF4444), radius = 3.5f, center = Offset(car.x + 13f, car.y - 28f))
-            // Front yellow broken headlights
-            drawCircle(Color(0xFFFCD34D), radius = 2.5f, center = Offset(car.x - 11f, car.y + 26f))
-            drawCircle(Color(0xFF1C1917), radius = 2.5f, center = Offset(car.x + 11f, car.y + 26f)) // damaged headlight
-        }
+            drawRoundRect(Color(0xFF323432), topLeft = Offset(-22f, -38f), size = Size(44f, 76f), cornerRadius = CornerRadius(6f))
+            drawRoundRect(Color(0xFF4D3325), topLeft = Offset(-20f, -35f), size = Size(40f, 70f), cornerRadius = CornerRadius(4f)) // Rust
 
-        // High intensity neon hazard simulation screen limits border
-        drawRect(Color(0xFF10B981).copy(alpha = 0.25f), topLeft = Offset.Zero, size = Size(gameW, gameH), style = Stroke(width = 4f))
+            // Windshield and side windows
+            drawRect(Color(0xFF131518), topLeft = Offset(-16f, -14f), size = Size(32f, 26f))
+            drawRect(Color(0xFF1D2024), topLeft = Offset(-14f, -11f), size = Size(28f, 20f))
+            
+            // Debris details
+            drawLine(Color(0xFF888888), Offset(-12f, -10f), Offset(10f, 5f), strokeWidth = 1f) // Shattered glass crack
+            
+            drawContext.canvas.restore()
+        }
 
         val baseCentroid = Offset(400f, 600f)
 
-        // 3. Draw Radar Core Outpost Guard Boundary
+        // 3. Draw Radar Core Outpost Guard Boundary (Subdued)
         drawCircle(
-            color = Color(0x1800FFCC), 
+            color = Color(0x0CFFFFFF), 
             radius = 120f, 
             center = baseCentroid,
-            style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(strokeDash))
+            style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(strokeDash))
         )
 
         // 4. Draw Outpost Citadel Core (Fully rendered steel concrete fortress with defense arcs)
         val baseHpPct = (viewModel.baseHp / viewModel.baseMaxHp).coerceIn(0f, 1f)
-        val securityPulseColor = Color(0xFF00FFCC).copy(alpha = 0.35f + 0.45f * baseHpPct)
+        val securityPulseColor = Color(0xFFE65100).copy(alpha = 0.15f + 0.25f * baseHpPct)
 
         // Defensive Sandbag Barricades defending the central base perimeter
         val sandbagStations = listOf(
@@ -678,51 +701,62 @@ fun GameplayCanvas(
         // Centered defensive outpost turret visual evolution
         viewModel.turrets.forEach { turret ->
             val center = Offset(turret.x, turret.y)
+            val isSelected = viewModel.selectedTurretSlotId == turret.slotId
+
+            // Significantly brighten the ground texture around turret slots for map visibility
+            drawCircle(color = Color(0x33FFFFFF), radius = 32f, center = center)
+
             if (turret.type == TurretType.NONE) {
-                // Pulse value based on System time
-                val pulse = 1f + sin(System.currentTimeMillis() / 250f) * 0.15f
-                val glowColor = Color(0xFF00FFCC) // Cyan pulsing glow color
+                // Empty Turret Slot (Military Mount)
                 val radiusNormal = 22f
-                val radiusGlow = radiusNormal * pulse
                 
-                // 1. Draw glowing outer pulsing energy Aura
+                val slotGlowColor = if (isSelected) Color(0xFFFF9800) else Color(0xFFFFF176) 
+                
+                // Add a thicker glowing outline
                 drawCircle(
-                    color = glowColor.copy(alpha = 0.15f),
-                    radius = radiusGlow + 8f,
+                    color = slotGlowColor.copy(alpha = if(isSelected) 0.5f else 0.25f),
+                    radius = radiusNormal + 6f,
+                    center = center
+                )
+
+                // 1. Draw solid steel base
+                drawCircle(
+                    color = Color(0xFF454A4A),
+                    radius = radiusNormal,
                     center = center
                 )
                 
-                // 2. Draw outer slot border ring with dash path effect for high-tech look
+                // 2. Draw outer slot border ring with brighter dashed steel effect
                 drawCircle(
-                    color = glowColor.copy(alpha = 0.5f),
+                    color = slotGlowColor.copy(alpha = 0.9f),
                     radius = radiusNormal,
                     center = center,
                     style = Stroke(
-                        width = 2f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f), (System.currentTimeMillis() / 10f) % 20f)
+                        width = 5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                     )
                 )
 
-                // 3. Draw semi-transparent background fill
+                // 3. Draw inner mechanism hole (keep slightly dark)
                 drawCircle(
-                    color = Color(0x33020617),
-                    radius = radiusNormal,
+                    color = Color(0xFF141615),
+                    radius = radiusNormal * 0.6f,
                     center = center
                 )
 
-                // 4. Draw bold '+' symbol in the center
-                val barHalfLength = 8f * pulse
+                // 4. Draw bold '+' symbol in the center (Construction mark)
+                val barHalfLength = 8f
                 val barThickness = 3f
                 // Horizontal bar
                 drawLine(
-                    color = glowColor,
+                    color = slotGlowColor.copy(alpha = 0.8f),
                     start = Offset(center.x - barHalfLength, center.y),
                     end = Offset(center.x + barHalfLength, center.y),
                     strokeWidth = barThickness
                 )
                 // Vertical bar
                 drawLine(
-                    color = glowColor,
+                    color = slotGlowColor.copy(alpha = 0.8f),
                     start = Offset(center.x, center.y - barHalfLength),
                     end = Offset(center.x, center.y + barHalfLength),
                     strokeWidth = barThickness
@@ -730,21 +764,39 @@ fun GameplayCanvas(
                 return@forEach
             }
 
-            val ringColor = Color(0xFF334155) // Cyber steel gray
-            val glowColor = Color(0xFF00FFCC) // Cyan pulsing glow
-
-            // Outer energy glow field that pulses wider as level climbs
-            val pulseRadius = 24f + (turret.level * 1.2f).coerceAtMost(16f)
+            // --- ACTIVE TURRET RENDERING ---
+            // High visibility realistic colors
+            val armorColor = Color(0xFF8BA38B) // Very bright military green
+            val detailColor = Color(0xFFE2E8E8) // Bright metallic silver/white
+            
+            // Strong shadow to pop it up from ground
             drawCircle(
-                color = glowColor.copy(alpha = 0.12f),
-                radius = pulseRadius,
+                color = Color(0xCC000000),
+                radius = 28f,
+                center = center.copy(y = center.y + 6f)
+            )
+
+            // Bright glow under turret
+            val activeGlowColor = if (isSelected) Color(0xFFFFB300) else Color(0xFF00FF88)
+            drawCircle(
+                color = activeGlowColor.copy(alpha = if(isSelected) 0.6f else 0.3f),
+                radius = if(isSelected) 34f else 30f,
                 center = center
             )
 
-            // Heavy mount structure base
-            drawCircle(color = Color(0xFF020617), radius = 22f, center = center)
-            drawCircle(color = ringColor, radius = 22f, center = center, style = Stroke(width = 3.5f))
-            drawCircle(color = glowColor.copy(alpha = 0.25f), radius = 14f, center = center)
+            // Heavy static mounting base plate (Brighter base)
+            drawCircle(color = Color(0xFF4A4E4D), radius = 24f, center = center)
+            // Thick bright outer ring
+            drawCircle(color = Color(0xFFD0D5D5), radius = 24f, center = center, style = Stroke(width = 3f))
+            // Inner armor plate
+            drawCircle(color = armorColor, radius = 20f, center = center, style = Stroke(width = 4f))
+            drawCircle(color = detailColor, radius = 12f, center = center)
+            
+            // Hexagon bolts
+            for(i in 0 until 6) {
+                val bA = i * 60f * PI.toFloat() / 180f
+                drawCircle(color = Color(0xFF111111), radius = 2f, center = Offset(center.x + cos(bA) * 16f, center.y + sin(bA) * 16f))
+            }
 
             // Render rotated weapon barrels
             val rad = turret.angle * PI.toFloat() / 180f
@@ -755,103 +807,59 @@ fun GameplayCanvas(
 
             // Architectural evolution based on level
             if (level >= 8) {
-                // TRIPLE TURBO CANNON: Heavy central barrel plus dual offset heavy cannons
-                val orthX = -sinA * 7f
-                val orthY = cosA * 7f
+                // TRIPLE HEAVY ARTILLERY
+                val orthX = -sinA * 8f
+                val orthY = cosA * 8f
+                val lenCenter = (36f + level * 1.0f).coerceAtMost(55f)
+                val lenSides = (30f + level * 0.8f).coerceAtMost(48f)
 
-                val lenCenter = (32f + level * 1.2f).coerceAtMost(55f)
-                val lenSides = (26f + level * 1.0f).coerceAtMost(48f)
-
-                // Central heavy rail
-                drawLine(
-                    color = Color(0xFF1E293B),
-                    start = center,
-                    end = Offset(turret.x + cosA * lenCenter, turret.y + sinA * lenCenter),
-                    strokeWidth = 7.5f
-                )
-                drawLine(
-                    color = Color(0xFF00FFCC),
-                    start = center + Offset(cosA * 8f, sinA * 8f),
-                    end = Offset(turret.x + cosA * (lenCenter - 2f), turret.y + sinA * (lenCenter - 2f)),
-                    strokeWidth = 3f
-                )
-
+                // Central heavy barrel
+                drawLine(detailColor, start = center, end = Offset(turret.x + cosA * lenCenter, turret.y + sinA * lenCenter), strokeWidth = 9f)
                 // Left support cannon
-                drawLine(
-                    color = Color(0xFF475569),
-                    start = Offset(turret.x + orthX, turret.y + orthY),
-                    end = Offset(turret.x + cosA * lenSides + orthX, turret.y + sinA * lenSides + orthY),
-                    strokeWidth = 4.5f
-                )
+                drawLine(detailColor, start = Offset(turret.x + orthX, turret.y + orthY), end = Offset(turret.x + cosA * lenSides + orthX, turret.y + sinA * lenSides + orthY), strokeWidth = 5f)
                 // Right support cannon
-                drawLine(
-                    color = Color(0xFF475569),
-                    start = Offset(turret.x - orthX, turret.y - orthY),
-                    end = Offset(turret.x + cosA * lenSides - orthX, turret.y + sinA * lenSides - orthY),
-                    strokeWidth = 4.5f
-                )
+                drawLine(detailColor, start = Offset(turret.x - orthX, turret.y - orthY), end = Offset(turret.x + cosA * lenSides - orthX, turret.y + sinA * lenSides - orthY), strokeWidth = 5f)
 
-                // Charging capacitor core
-                drawCircle(color = Color(0xFF1E293B), radius = 10f, center = center)
-                drawCircle(color = glowColor, radius = 7f, center = center)
-                drawCircle(color = Color.White, radius = 3.5f, center = center)
-
+                // Armored housing
+                drawRect(armorColor, topLeft = Offset(center.x - 14f, center.y - 14f), size = Size(28f, 28f))
+                drawLine(Color(0xFF5A666A), start = center, end = Offset(turret.x + cosA * 16f, turret.y + sinA * 16f), strokeWidth = 14f) // Shield
+                
+                // Muzzle breaks
+                drawLine(Color(0xFF000000), start = Offset(turret.x + cosA * (lenCenter-4f), turret.y + sinA * (lenCenter-4f)), end = Offset(turret.x + cosA * lenCenter, turret.y + sinA * lenCenter), strokeWidth = 12f)
             } else if (level >= 4) {
-                // DUAL RAPID CANNON: Parallel machine guns with thermal dissipation sleeves
-                val orthX = -sinA * 5f
-                val orthY = cosA * 5f
-
-                val len = (26f + level * 1.5f).coerceAtMost(48f)
+                // DUAL AUTO CANNON
+                val orthX = -sinA * 6f
+                val orthY = cosA * 6f
+                val len = (30f + level * 1.2f).coerceAtMost(48f)
 
                 // Left gun barrel
-                drawLine(
-                    color = Color(0xFF475569),
-                    start = Offset(turret.x + orthX, turret.y + orthY),
-                    end = Offset(turret.x + cosA * len + orthX, turret.y + sinA * len + orthY),
-                    strokeWidth = 5.5f
-                )
+                drawLine(detailColor, start = Offset(turret.x + orthX, turret.y + orthY), end = Offset(turret.x + cosA * len + orthX, turret.y + sinA * len + orthY), strokeWidth = 6f)
                 // Right gun barrel
-                drawLine(
-                    color = Color(0xFF475569),
-                    start = Offset(turret.x - orthX, turret.y - orthY),
-                    end = Offset(turret.x + cosA * len - orthX, turret.y + sinA * len - orthY),
-                    strokeWidth = 5.5f
-                )
-                // Magnetic flux tube capacitor in-between
-                drawLine(
-                    color = glowColor,
-                    start = Offset(turret.x + orthX + cosA * 10f, turret.y + orthY + sinA * 10f),
-                    end = Offset(turret.x - orthX + cosA * 10f, turret.y - orthY + sinA * 10f),
-                    strokeWidth = 2.5f
-                )
-
-                drawCircle(color = Color(0xFF1E293B), radius = 9f, center = center)
-                drawCircle(color = glowColor, radius = 6f, center = center)
+                drawLine(detailColor, start = Offset(turret.x - orthX, turret.y - orthY), end = Offset(turret.x + cosA * len - orthX, turret.y + sinA * len - orthY), strokeWidth = 6f)
+                
+                // Ammunition box / housing
+                drawRect(armorColor, topLeft = Offset(center.x - 12f, center.y - 12f), size = Size(24f, 24f))
+                
+                // Vents
+                drawLine(Color(0xFF111111), start = Offset(turret.x + orthX + cosA * 15f, turret.y + orthY + sinA * 15f), end = Offset(turret.x - orthX + cosA * 15f, turret.y - orthY + sinA * 15f), strokeWidth = 2.5f)
+                drawLine(Color(0xFF111111), start = Offset(turret.x + orthX + cosA * 20f, turret.y + orthY + sinA * 20f), end = Offset(turret.x - orthX + cosA * 20f, turret.y - orthY + sinA * 20f), strokeWidth = 2.5f)
             } else {
-                // SINGLE GATLING GUN: Heavy singular caliber gun
-                val len = (22f + level * 2.0f).coerceAtMost(38f)
-                drawLine(
-                    color = Color(0xFF64748B),
-                    start = center,
-                    end = Offset(turret.x + cosA * len, turret.y + sinA * len),
-                    strokeWidth = 5.5f
-                )
-                drawLine(
-                    color = glowColor,
-                    start = Offset(turret.x + cosA * 8f, turret.y + sinA * 8f),
-                    end = Offset(turret.x + cosA * len, turret.y + sinA * len),
-                    strokeWidth = 2f
-                )
-
-                drawCircle(color = ringColor, radius = 8f, center = center)
-                drawCircle(color = glowColor, radius = 5f, center = center)
+                // SINGLE HEAVY MACHINE GUN
+                val len = (26f + level * 1.5f).coerceAtMost(42f)
+                drawLine(detailColor, start = center, end = Offset(turret.x + cosA * len, turret.y + sinA * len), strokeWidth = 6.5f)
+                
+                // Weapon housing
+                drawRect(armorColor, topLeft = Offset(center.x - 10f, center.y - 10f), size = Size(20f, 20f))
+                
+                drawCircle(color = Color(0xFF333333), radius = 6f, center = center)
             }
 
             // Level text indicator next to the turret (LVL 1-10+)
             val textLayoutResult = textMeasurer.measure(
                 text = "LVL $level",
                 style = TextStyle(
-                    color = glowColor,
+                    color = Color(0xFFB0BEC5),
+
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace
@@ -974,119 +982,34 @@ fun GameplayCanvas(
             // Translate and scale the entire drawing
             translate(left = wobbleX, top = wobbleY) {
                 scale(scale = zScale, pivot = zombieCenter) {
-                    rotate(degrees = angleToPlayerDeg, pivot = zombieCenter) {
-                        when (zombie.type) {
-                    ZombieType.WALKER -> {
-                        // Decaying green skin with ragged gray tattered sleeve collars
-                        // Reaching claws
-                        drawCircle(color = Color(0xFF1B5E20), radius = zombie.size * 0.35f, center = Offset(zombie.x + zombie.size * 0.8f, zombie.y - 7f + armSwing))
-                        drawCircle(color = Color(0xFF1B5E20), radius = zombie.size * 0.35f, center = Offset(zombie.x + zombie.size * 0.8f, zombie.y + 7f - armSwing))
-                        // Ragged tattered shoulders
-                        drawCircle(color = Color(0xFF3F4F3D), radius = zombie.size * 0.72f, center = Offset(zombie.x - 3f, zombie.y - 6f))
-                        drawCircle(color = Color(0xFF3F4F3D), radius = zombie.size * 0.72f, center = Offset(zombie.x - 3f, zombie.y + 6f))
-                        // Brain head mold
-                        drawCircle(baseCol, radius = zombie.size, center = zombieCenter)
-                        drawCircle(color = Color(0xFF2E7D32), radius = zombie.size * 0.62f, center = zombieCenter)
-                        // Red dripping scar
-                        drawLine(Color(0xFFD50000), start = Offset(zombie.x - 4f, zombie.y - 2f), end = Offset(zombie.x + 6f, zombie.y + 3f), strokeWidth = 2f)
+                    val isNearPlayer = kotlin.math.hypot(
+                        (viewModel.playerPos.x - zombie.x).toDouble(),
+                        (viewModel.playerPos.y - zombie.y).toDouble()
+                    ) < 45.0
+                    with(com.example.ui.CharacterRenderer) {
+                        drawAdvancedZombie(
+                            center = zombieCenter,
+                            angle = angleToPlayerDeg,
+                            zombie = zombie,
+                            timeMs = System.currentTimeMillis(),
+                            isAttacking = isNearPlayer
+                        )
                     }
-                    ZombieType.RUNNER -> {
-                        // Agile fast sprinters with neon trails
-                        // Extreme lunging arms
-                        drawCircle(color = Color(0xFF8C1D03), radius = zombie.size * 0.35f, center = Offset(zombie.x + zombie.size * 1.1f, zombie.y - 4f + legSwing))
-                        drawCircle(color = Color(0xFF8C1D03), radius = zombie.size * 0.35f, center = Offset(zombie.x + zombie.size * 0.7f, zombie.y + 8f - legSwing))
-                        // Sprint smoke streak trails
-                        if (Random.nextFloat() < 0.2f) {
-                            viewModel.particles.add(
-                                Particle(
-                                    x = zombie.x - zombie.size,
-                                    y = zombie.y + (Random.nextFloat() * 10f - 5f),
-                                    vx = -cos(angleToPlayerRad) * 40f,
-                                    vy = -sin(angleToPlayerRad) * 40f,
-                                    colorHex = zombie.colorHex,
-                                    size = Random.nextFloat() * 4f + 2f,
-                                    life = 0.5f,
-                                    decay = 1.8f
-                                )
+                    
+                    // Keep particle emission for Runner
+                    if (zombie.type == com.example.model.ZombieType.RUNNER && kotlin.random.Random.nextFloat() < 0.2f) {
+                        viewModel.particles.add(
+                            com.example.model.Particle(
+                                x = zombie.x - zombie.size,
+                                y = zombie.y + (kotlin.random.Random.nextFloat() * 10f - 5f),
+                                vx = -cos(angleToPlayerRad) * 40f,
+                                vy = -sin(angleToPlayerRad) * 40f,
+                                colorHex = zombie.colorHex,
+                                size = kotlin.random.Random.nextFloat() * 4f + 2f,
+                                life = 0.5f,
+                                decay = 1.8f
                             )
-                        }
-                        // Agile body
-                        drawCircle(baseCol, radius = zombie.size, center = zombieCenter)
-                        // Glowing bio slits for eyes
-                        drawCircle(Color(0xFFFCD34D), radius = zombie.size * 0.28f, center = Offset(zombie.x + 4f, zombie.y))
-                    }
-                    ZombieType.TANK -> {
-                        // Gigantic colossus wrapped in dark graphite plate armor back plating
-                        // Mutated big shoulder bumps
-                        drawCircle(color = Color(0xFF4A148C), radius = zombie.size * 0.85f, center = Offset(zombie.x - 12f, zombie.y - 12f))
-                        drawCircle(color = Color(0xFF4A148C), radius = zombie.size * 0.85f, center = Offset(zombie.x - 12f, zombie.y + 12f))
-                        // Back spikes armor plate
-                        drawRect(
-                            color = Color(0xFF1E293B),
-                            topLeft = Offset(zombie.x - zombie.size * 0.9f, zombie.y - zombie.size * 0.6f),
-                            size = Size(zombie.size * 1.2f, zombie.size * 1.2f)
                         )
-                        // Heavy outer muscle
-                        drawCircle(baseCol, radius = zombie.size, center = zombieCenter)
-                        drawCircle(Color(0xFF2E0854), radius = zombie.size * 0.7f, center = zombieCenter)
-                        // Cyber mutant bio-plates and single glowing red eye slit
-                        drawRect(
-                            color = Color(0xFF0F172A),
-                            topLeft = Offset(zombie.x + 3f, zombie.y - 3f),
-                            size = Size(8f, 6f)
-                        )
-                        drawCircle(Color(0xFFFF1744), radius = zombie.size * 0.2f, center = Offset(zombie.x + 6f, zombie.y)) // Glowing eye
-                    }
-                    ZombieType.BOMBER -> {
-                        // Carrying highly explosive orange barrel kegs on chest / back
-                        // Grey defensive gas visor
-                        drawRect(
-                            color = Color(0xFF475569),
-                            topLeft = Offset(zombie.x - 11f, zombie.y - 10f),
-                            size = Size(10f, 20f)
-                        )
-                        // Flesh
-                        drawCircle(baseCol, radius = zombie.size, center = zombieCenter)
-                        // Hazard Warning Explosive keg barrel (orange / yellow hazard stripes)
-                        drawRoundRect(
-                            color = Color(0xFFEA580C), // Orange keg
-                            topLeft = Offset(zombie.x - zombie.size * 0.6f, zombie.y - zombie.size * 0.66f),
-                            size = Size(zombie.size * 1.1f, zombie.size * 1.32f),
-                            cornerRadius = CornerRadius(4f)
-                        )
-                        // Yellow-Black Hazard sticker line
-                        drawRect(
-                            color = Color(0xFFFBBF24),
-                            topLeft = Offset(zombie.x - zombie.size * 0.4f, zombie.y - 3f),
-                            size = Size(zombie.size * 0.7f, 6f)
-                        )
-                        // Flashing red LED bomb digital clock timer blinking
-                        val blinkOn = (System.currentTimeMillis() % 400 < 200)
-                        drawCircle(
-                            color = if (blinkOn) Color(0xFFEF4444) else Color(0xFF450A0A),
-                            radius = zombie.size * 0.24f,
-                            center = Offset(zombie.x - zombie.size * 0.1f, zombie.y)
-                        )
-                    }
-                    ZombieType.BOSS -> {
-                        // Massive neon-cyber Behemoth (size 42f)
-                        // Giant bio-organic spiked appendages
-                        drawCircle(Color(0xFF0F172A), radius = zombie.size * 0.7f, center = Offset(zombie.x - 16f, zombie.y - 20f))
-                        drawCircle(Color(0xFF0F172A), radius = zombie.size * 0.7f, center = Offset(zombie.x - 16f, zombie.y + 20f))
-                        // Main massive skull
-                        drawCircle(baseCol, radius = zombie.size, center = zombieCenter)
-                        drawCircle(Color(0xFF006064), radius = zombie.size * 0.75f, center = zombieCenter)
-
-                        // Multiple neon-cyan glowing bio-eyes (4 eyes glowing)
-                        drawCircle(Color(0xFF00FFCC), radius = 5f, center = Offset(zombie.x + 12f, zombie.y - 12f))
-                        drawCircle(Color(0xFF00FFCC), radius = 5f, center = Offset(zombie.x + 12f, zombie.y + 12f))
-                        drawCircle(Color(0xFF00FFCC), radius = 4f, center = Offset(zombie.x + 16f, zombie.y - 4f))
-                        drawCircle(Color(0xFF00FFCC), radius = 4f, center = Offset(zombie.x + 16f, zombie.y + 4f))
-
-                        // Glowing bio reactor core
-                        drawCircle(Color(0xFFD500F9), radius = 10f, center = zombieCenter)
-                    }
-                        }
                     }
                 }
             }
@@ -1120,19 +1043,14 @@ fun GameplayCanvas(
         // 7. Draw Player character (Detailed, high-quality survivor with steps walk animations)
         val playerCenter = Offset(viewModel.playerPos.x, viewModel.playerPos.y)
         
-        // Circular drop shadow under survivor
-        drawCircle(
-            color = Color(0x6A000000),
-            radius = 24f,
-            center = Offset(playerCenter.x, playerCenter.y + 6f)
-        )
-
+        // Circular drop shadow under survivor handled in CharacterRenderer
+        
         // Survivor tactical flashlight cone extending in front (Lighting and Shadows)
         val flashCone = Path().apply {
             moveTo(playerCenter.x, playerCenter.y)
-            val leftF = (viewModel.playerAngle - 22f) * PI.toFloat() / 180f
-            val rightF = (viewModel.playerAngle + 22f) * PI.toFloat() / 180f
-            val len = 280f
+            val leftF = (viewModel.playerAngle - 20f) * PI.toFloat() / 180f
+            val rightF = (viewModel.playerAngle + 20f) * PI.toFloat() / 180f
+            val len = 320f
             lineTo(playerCenter.x + cos(leftF) * len, playerCenter.y + sin(leftF) * len)
             lineTo(playerCenter.x + cos(rightF) * len, playerCenter.y + sin(rightF) * len)
             close()
@@ -1140,164 +1058,57 @@ fun GameplayCanvas(
         drawPath(
             path = flashCone,
             brush = Brush.radialGradient(
-                colors = listOf(Color(0x28FFF176), Color.Transparent),
+                colors = listOf(Color(0x11FFFFFF), Color.Transparent),
                 center = playerCenter,
-                radius = 280f
+                radius = 320f
             )
         )
 
-        // Rotate whole body around movement angle
-        rotate(degrees = viewModel.playerAngle, pivot = playerCenter) {
-            // Legs walk cycle swing
-            val movementState = (joystickOffset != Offset.Zero)
-            val legDelta = if (movementState) sin(System.currentTimeMillis() / 110f) * 10f else 0f
-            
-            // Left combat boot protruding
-            drawRoundRect(
-                color = Color(0xFF1E293B),
-                topLeft = Offset(playerCenter.x - 14f, playerCenter.y - 14f + legDelta),
-                size = Size(10f, 6f),
-                cornerRadius = CornerRadius(2f)
-            )
-            // Right combat boot protruding
-            drawRoundRect(
-                color = Color(0xFF1E293B),
-                topLeft = Offset(playerCenter.x - 14f, playerCenter.y + 8f - legDelta),
-                size = Size(10f, 6f),
-                cornerRadius = CornerRadius(2f)
-            )
-
-            // Survivor jacket body (Olive/Brown)
-            drawCircle(color = Color(0xFF452E1E), radius = 18f, center = playerCenter)
-
-            // Bulletproof tact armor vest plates (Cargo tan)
-            drawRoundRect(
-                color = Color(0xFFB45309), // Armor plate
-                topLeft = Offset(playerCenter.x - 10f, playerCenter.y - 12f),
-                size = Size(20f, 24f),
-                cornerRadius = CornerRadius(4f)
-            )
-            drawRoundRect(
-                color = Color(0xFF78350F), // Inner vest shadow
-                topLeft = Offset(playerCenter.x - 6f, playerCenter.y - 9f),
-                size = Size(12f, 18f),
-                cornerRadius = CornerRadius(3f)
-            )
-
-            // Tan survival backpack with black strap lines
-            drawRect(
-                color = Color(0xFF92400E), // Tan backpack
-                topLeft = Offset(playerCenter.x - 15f, playerCenter.y - 7f),
-                size = Size(10f, 14f)
-            )
-            // Straps
-            drawLine(Color.Black, start = Offset(playerCenter.x - 12f, playerCenter.y - 7f), end = Offset(playerCenter.x - 4f, playerCenter.y - 7f), strokeWidth = 1.5f)
-            drawLine(Color.Black, start = Offset(playerCenter.x - 12f, playerCenter.y + 7f), end = Offset(playerCenter.x - 4f, playerCenter.y + 7f), strokeWidth = 1.5f)
-
-            // Survivor hands holding carbon assault rifle
-            // Left sleeve shoulder pad
-            drawCircle(color = Color(0xFF452E1E), radius = 7f, center = Offset(playerCenter.x - 1f, playerCenter.y - 12f))
-            drawCircle(color = Color(0xFFFBBF24), radius = 4f, center = Offset(playerCenter.x + 8f, playerCenter.y - 11f)) // glove hand
-            
-            // Right sleeve shoulder pad
-            drawCircle(color = Color(0xFF452E1E), radius = 7f, center = Offset(playerCenter.x - 1f, playerCenter.y + 12f))
-            drawCircle(color = Color(0xFFFBBF24), radius = 4f, center = Offset(playerCenter.x + 14f, playerCenter.y + 6f)) // glove hand
-
-            // Sleek Assault Rifle with scope optics, handguard and mag
-            // Main barrel stock
-            drawRect(
-                color = Color(0xFF0F172A),
-                topLeft = Offset(playerCenter.x + 2f, playerCenter.y - 3f),
-                size = Size(27f, 6f)
-            )
-            // Gun scope optic cylinder block
-            drawRect(
-                color = Color(0xFF475569),
-                topLeft = Offset(playerCenter.x + 8f, playerCenter.y - 4.5f),
-                size = Size(9f, 3f)
-            )
-            // Tech muzzle muzzle tip
-            drawCircle(Color(0xFF334155), radius = 2f, center = Offset(playerCenter.x + 29f, playerCenter.y))
-
-            // Cyber bright red laser scope target trace line extending forward
-            drawLine(
-                color = Color(0x66FF1744),
-                start = Offset(playerCenter.x + 29f, playerCenter.y),
-                end = Offset(playerCenter.x + 260f, playerCenter.y),
-                strokeWidth = 1f
-            )
-
-            // Muzzle flash particle sparks (whenever active firing spray bursts)
-            if (Random.nextFloat() < 0.45f) {
-                // Flash glow circle
-                drawCircle(
-                    color = Color(0x88FFD700),
-                    radius = 8f,
-                    center = Offset(playerCenter.x + 32f, playerCenter.y)
-                )
-                // Flash core
-                drawCircle(
-                    color = Color.White,
-                    radius = 4f,
-                    center = Offset(playerCenter.x + 31f, playerCenter.y)
-                )
-            }
-        }
-
-        // Survivor military helmet with cybernetic glowing visors
-        drawCircle(
-            color = Color(0xFF1E293B),
-            radius = 16f,
-            center = playerCenter
-        )
-        // Helmet tactical ridge
-        drawCircle(color = Color(0xFF475569), radius = 11f, center = playerCenter)
-        // Cyber neon cyan protective visor shield
-        rotate(degrees = viewModel.playerAngle, pivot = playerCenter) {
-            drawArc(
-                color = Color(0xFF00FFCC),
-                startAngle = -55f,
-                sweepAngle = 110f,
-                useCenter = false,
-                topLeft = Offset(playerCenter.x - 5f, playerCenter.y - 9f),
-                size = Size(18f, 18f),
-                style = Stroke(width = 3f)
+        with(com.example.ui.CharacterRenderer) {
+            val isShooting = viewModel.bullets.isNotEmpty()
+            drawAdvancedPlayer(
+                center = playerCenter,
+                angle = viewModel.playerAngle,
+                movementState = (joystickOffset != Offset.Zero),
+                isShooting = isShooting,
+                timeMs = System.currentTimeMillis()
             )
         }
 
-        // Green floating HUD health bar directly above player head
+        // Realistic floating HUD health bar directly above player head
         val pBarW = 38f
-        val pBarH = 5f
+        val pBarH = 4f
         drawRoundRect(
-            color = Color(0x7F000000),
+            color = Color(0x99000000),
             topLeft = Offset(playerCenter.x - pBarW / 2f, playerCenter.y - 28f),
             size = Size(pBarW, pBarH),
-            cornerRadius = CornerRadius(2.5f)
+            cornerRadius = CornerRadius(2f)
         )
         drawRoundRect(
-            color = Color(0xFF00FFCC),
+            color = Color(0xFF4CAF50),
             topLeft = Offset(playerCenter.x - pBarW / 2f, playerCenter.y - 28f),
             size = Size(pBarW * 1.0f, pBarH),
-            cornerRadius = CornerRadius(2.5f)
+            cornerRadius = CornerRadius(2f)
         )
 
-        // 8. Draw Projectile Bullets laser streak particles
+        // 8. Draw Projectile Bullets (Tracer rounds)
         viewModel.bullets.forEach { bullet ->
             val bCenter = Offset(bullet.x, bullet.y)
-            val bColor = Color(bullet.colorHex)
             
-            // Draw glowing trailing trace lines
-            val lenX = bullet.vx / bullet.speed * 20f
-            val lenY = bullet.vy / bullet.speed * 20f
+            // Draw short tracer tail (Physical bullet illusion)
+            val tailLenX = bullet.vx / bullet.speed * 12f
+            val tailLenY = bullet.vy / bullet.speed * 12f
+            
             drawLine(
-                color = bColor.copy(alpha = 0.45f),
-                start = Offset(bullet.x - lenX, bullet.y - lenY),
+                color = Color(0x66FF9800), // Orange burnt tracer tail
+                start = Offset(bullet.x - tailLenX, bullet.y - tailLenY),
                 end = bCenter,
-                strokeWidth = bullet.size * 1.4f
+                strokeWidth = bullet.size * 1.2f
             )
-            // Outer bullet core
-            drawCircle(bColor, radius = bullet.size, center = bCenter)
-            drawCircle(Color.White, radius = bullet.size * 0.48f, center = bCenter)
+            
+            // Solid bullet tip
+            drawCircle(Color(0xFFFFEE58), radius = bullet.size * 0.8f, center = bCenter) // Yellow-hot tip
+            drawCircle(Color.White, radius = bullet.size * 0.4f, center = bCenter) // Bright core
         }
 
         // 9. Draw Floating elements (Floating damage indicator texts and coin scores)
@@ -1355,6 +1166,88 @@ fun UIOverlay(viewModel: GameViewModel) {
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
+        // --- BOSS INCOMING WARNING BANNER ---
+        androidx.compose.animation.AnimatedVisibility(
+            visible = viewModel.isBossWarningActive && viewModel.gameState == GameState.PLAYING,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(16.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(32.dp, RoundedCornerShape(16.dp))
+                    .border(3.dp, Color(0xFFFF1744), RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xF01D0408))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("⚠ BOSS INCOMING ⚠", style = TextStyle(color = Color(0xFFFF1744), fontSize = 28.sp, fontWeight = FontWeight.Black))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("PREPARE FOR BATTLE", style = TextStyle(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp))
+                }
+            }
+        }
+        
+        // --- BOSS HP BAR ---
+        androidx.compose.animation.AnimatedVisibility(
+            visible = viewModel.isBossActive && viewModel.gameState == GameState.PLAYING,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 90.dp)
+                .padding(horizontal = 24.dp)
+        ) {
+            val bossHpPct = (viewModel.activeBossHp / viewModel.activeBossMaxHp).coerceIn(0f, 1f)
+            
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = viewModel.activeBossName,
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 13.sp,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF260E0E))
+                        .border(1.dp, Color(0xFF5D1212), RoundedCornerShape(10.dp))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(bossHpPct)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFFFF1744), Color(0xFFFF8A80))
+                                )
+                            )
+                    )
+                    Text(
+                        text = "${viewModel.activeBossHp.toInt()} / ${viewModel.activeBossMaxHp.toInt()}",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+            }
+        }
+        
         // Non-blocking Wave Completed banner at the top of the screen
         androidx.compose.animation.AnimatedVisibility(
             visible = viewModel.isBetweenWaves && viewModel.gameState == GameState.PLAYING,
@@ -1367,9 +1260,8 @@ fun UIOverlay(viewModel: GameViewModel) {
         ) {
             val waveCompletedNum = viewModel.currentWave - 1
             val nextWaveNum = viewModel.currentWave
-            val isNextBossSpike = (nextWaveNum % 10 == 0)
-            val isNextMajor = (nextWaveNum % 25 == 0)
-            val isNextHorde = (nextWaveNum % 5 == 0 && !isNextBossSpike && !isNextMajor)
+            val isNextBossSpike = (nextWaveNum == 25 || nextWaveNum == 50 || nextWaveNum == 75 || nextWaveNum == 100)
+            val isNextHorde = (nextWaveNum % 5 == 0 && !isNextBossSpike)
             
             val bonusRewardBonus = 50L + (waveCompletedNum * 10L)
 
@@ -1379,8 +1271,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                     .shadow(12.dp, RoundedCornerShape(16.dp)),
                 colors = CardDefaults.cardColors(
                     containerColor = when {
-                        isNextMajor -> Color(0xE6A11F1D) // Deep Crimson
-                        isNextBossSpike -> Color(0xE6C62828) // Strong Red
+                        isNextBossSpike -> Color(0xE6A11F1D) // Deep Crimson
                         isNextHorde -> Color(0xE6E65100) // Deep Orange
                         else -> Color(0xE60D131F) // Dark theme
                     }
@@ -1389,8 +1280,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                 border = BorderStroke(
                     width = 1.5.dp,
                     color = when {
-                        isNextMajor -> Color(0xFFFF1744)
-                        isNextBossSpike -> Color(0xFFEF5350)
+                        isNextBossSpike -> Color(0xFFFF1744)
                         isNextHorde -> Color(0xFFFB8C00)
                         else -> Color(0xFF00FFCC)
                     }
@@ -1428,7 +1318,6 @@ fun UIOverlay(viewModel: GameViewModel) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = when {
-                                isNextMajor -> "⚠️ WAVE $nextWaveNum: MAJOR CHALLENGE INCOMING"
                                 isNextBossSpike -> "☠️ WAVE $nextWaveNum: BOSS APEX WARNING"
                                 isNextHorde -> "🔥 WAVE $nextWaveNum: SWARM WAVE PROXIMATE"
                                 else -> "🛰️ Wave $nextWaveNum secure scanning..."
@@ -1441,7 +1330,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                             )
                         )
                     }
-                    if (viewModel.isAutoSkipEnabled) {
+                    if (!viewModel.isAutoSkipEnabled) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0x33000000)),
                             shape = RoundedCornerShape(8.dp),
@@ -1457,23 +1346,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                             )
                         }
                     } else {
-                        Button(
-                            onClick = { viewModel.startNextWave() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .padding(start = 6.dp)
-                                .testTag("start_next_wave_button")
-                        ) {
-                            Text(
-                                text = "START NEXT WAVE ⚔️",
-                                color = Color.White,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.SansSerif
-                            )
-                        }
+                        // Instant spawn, so nothing to show here and wait time is 0.
                     }
                 }
             }
@@ -1542,7 +1415,10 @@ fun UIOverlay(viewModel: GameViewModel) {
                 Card(
                     modifier = Modifier
                         .shadow(4.dp, RoundedCornerShape(8.dp))
-                        .clickable { viewModel.isAutoSkipEnabled = !viewModel.isAutoSkipEnabled }
+                        .clickable { 
+                            com.example.audio.GameAudioSynth.playButtonClick()
+                            viewModel.isAutoSkipEnabled = !viewModel.isAutoSkipEnabled 
+                        }
                         .testTag("auto_skip_toggle"),
                     shape = RoundedCornerShape(8.dp),
                     colors = CardDefaults.cardColors(
@@ -1642,52 +1518,62 @@ fun UIOverlay(viewModel: GameViewModel) {
             }
 
             // Right HUD element: Stack money earnings
-            Row(
-                modifier = Modifier
-                    .shadow(6.dp, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xE60A0D15))
-                    .border(
-                        BorderStroke(
-                            1.5.dp,
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF4CAF50), Color(0x334CAF50))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Dollars component
+                    Row(
+                        modifier = Modifier
+                            .shadow(4.dp, RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xE60A0D15))
+                            .border(1.dp, Color(0x8000FFCC), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("💵", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "$${viewModel.bankDollars}",
+                            style = TextStyle(
+                                color = Color(0xFF00FFCC),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
                             )
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("💸", fontSize = 15.sp)
-                Spacer(modifier = Modifier.width(6.dp))
-                Column {
-                    Text(
-                        text = "MONEY",
-                        style = TextStyle(
-                            color = Color(0xFFB0BEC5),
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.SansSerif
                         )
-                    )
-                    Text(
-                        text = "$${viewModel.lifetimeCoins}",
-                        style = TextStyle(
-                            color = Color(0xFF81C784),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
+                    }
+                    // Coins component
+                    Row(
+                        modifier = Modifier
+                            .shadow(4.dp, RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xE60A0D15))
+                            .border(1.dp, Color(0x80FFD700), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🪙", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "${viewModel.lifetimeCoins}",
+                            style = TextStyle(
+                                color = Color(0xFFFFD700),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
+                            )
                         )
-                    )
+                    }
                 }
-            }
+                
+                Spacer(modifier = Modifier.width(6.dp))
 
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Pause toggle button next to earnings
-            IconButton(
-                onClick = { viewModel.exitToMenu() },
+                // Pause toggle button next to earnings
+                IconButton(
+                    onClick = { viewModel.togglePause() },
                 modifier = Modifier
                     .size(34.dp)
                     .background(Color(0xDD0D0F14), CircleShape)
@@ -1701,6 +1587,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
+            }
             }
         }
 
@@ -1794,7 +1681,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(
-                        text = "$${viewModel.lifetimeCoins}",
+                        text = "${viewModel.lifetimeCoins} 🪙",
                         color = Color(0xFFFFD700),
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
@@ -1821,6 +1708,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                     iconLabel = "🔫",
                     themeColor = Color(0xFF29B6F6),
                     canAfford = viewModel.lifetimeCoins >= viewModel.gunCost,
+                    isMaxed = viewModel.gunLevel >= 4,
                     onClick = { viewModel.upgradeGun() }
                 )
 
@@ -1832,6 +1720,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                     iconLabel = "➕",
                     themeColor = Color(0xFF66BB6A),
                     canAfford = viewModel.lifetimeCoins >= viewModel.regenCost,
+                    isMaxed = viewModel.regenLevel >= 5,
                     onClick = { viewModel.upgradeRegen() }
                 )
             }
@@ -1841,16 +1730,21 @@ fun UIOverlay(viewModel: GameViewModel) {
         val slotId = viewModel.selectedTurretSlotId
         if (slotId != null) {
             val turret = viewModel.turrets.firstOrNull { it.slotId == slotId }
-            if (turret != null) {
+            if (turret != null || slotId == -1) {
                 // Background overlay scrim
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.65f))
-                        .clickable { viewModel.selectedTurretSlotId = null },
+                        .clickable { 
+                            com.example.audio.GameAudioSynth.playButtonClick()
+                            viewModel.selectedTurretSlotId = null 
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     // Quick panel container
+                    val equippedId = viewModel.equippedTurretsCSV.split(",").firstOrNull() ?: "Basic Turret"
+                    val turretItem = com.example.model.LoadoutData.TURRETS.find { it.id == equippedId } ?: com.example.model.LoadoutData.TURRETS.first()
                     Card(
                         modifier = Modifier
                             .width(320.dp)
@@ -1883,7 +1777,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "🛰️ FORTRESS SLOT #${slotId + 1}",
+                                    text = if (slotId == -1) "📡 NEW FORTRESS LOCATION" else "🛰️ FORTRESS SLOT #${slotId + 1}",
                                     color = Color(0xFF90A4AE),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
@@ -1900,14 +1794,25 @@ fun UIOverlay(viewModel: GameViewModel) {
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            if (turret.type == TurretType.NONE) {
-                                // DEPLOY CHRONO TURRET
-                                val glowColor = Color(0xFF00FFCC) // Beautiful Cyan neon glow
-                                val buildCost = viewModel.getTurretBuildCost(TurretType.GATLING)
+                            if (turret == null || turret.type == TurretType.NONE) {
+                                // DEPLOY TURRET
+                                val glowColor = Color(0xFFF39C12) // Amber warning status
+                                val buildCost = viewModel.getTurretBuildCost(turretItem.turretType)
                                 val canAfford = viewModel.lifetimeCoins >= buildCost
 
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                                        .border(2.dp, glowColor, RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(turretItem.icon, fontSize = 40.sp)
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 Text(
-                                    text = "DEPLOY CHRONO TURRET",
+                                    text = "DEPLOY ${turretItem.name.uppercase()}",
                                     color = glowColor,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Black,
@@ -1944,10 +1849,10 @@ fun UIOverlay(viewModel: GameViewModel) {
                                         Spacer(modifier = Modifier.height(6.dp))
                                         
                                         val statsList = listOf(
-                                            "Initial Damage" to "6.8 DMG",
-                                            "Firing Range" to "300m",
-                                            "Fire Cycle Rate" to "450ms",
-                                            "Target Pierce Count" to "1 Target"
+                                            "Damage" to "${turretItem.damageBase} DMG",
+                                            "Range" to "${turretItem.range.toInt()}m",
+                                            "Fire Rate" to "${turretItem.fireRateBase}/s",
+                                            "Type" to turretItem.turretType.name
                                         )
                                         statsList.forEach { (label, value) ->
                                             Row(
@@ -1976,7 +1881,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "$${viewModel.lifetimeCoins}",
+                                        text = "${viewModel.lifetimeCoins} 🪙",
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
@@ -1989,7 +1894,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                                 // Deploy Button
                                 Button(
                                     onClick = {
-                                        viewModel.deployTurret(slotId, TurretType.GATLING)
+                                        viewModel.deployTurret(slotId, turretItem.turretType)
                                         viewModel.selectedTurretSlotId = null
                                     },
                                     enabled = canAfford,
@@ -2014,7 +1919,7 @@ fun UIOverlay(viewModel: GameViewModel) {
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                         Text(
-                                            text = "$$buildCost",
+                                            text = "🪙$buildCost",
                                             color = if (canAfford) Color.Black else Color.White.copy(alpha = 0.4f),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Black,
@@ -2035,18 +1940,18 @@ fun UIOverlay(viewModel: GameViewModel) {
                                 }
                             } else {
                                 // Redesigned OUTPOST CHRONO-TURRET UPGRADE SYSTEM
-                                val glowColor = Color(0xFF00FFCC) // Beautiful Cyan neon glow
-                                val turretName = "OUTPOST CHRONO TURRET"
+                                val glowColor = Color(0xFFF39C12) // Amber warning glow
+                                val turretName = turretItem.name.uppercase()
 
                                 Text(
-                                    text = turretName,
+                                    text = "$turretName (LVL ${turret.level})",
                                     color = glowColor,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Black,
                                     textAlign = TextAlign.Center
                                 )
                             Text(
-                                text = "LEVEL ${turret.level} ACTIVE GUARD",
+                                text = "ACTIVE GUARD",
                                 color = Color.White.copy(alpha = 0.6f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
@@ -2072,22 +1977,14 @@ fun UIOverlay(viewModel: GameViewModel) {
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     
-                                    val dmgVal = 8f + (turret.level - 1) * 4f
-                                    val rngeVal = 300f + (turret.level - 1) * 15f
-                                    val rateVal = max(100L, 450L - (turret.level - 1) * 20L)
-                                    val projVal = if (turret.level >= 8) 3 else if (turret.level >= 4) 2 else 1
-                                    val splashVal = if (turret.level >= 9) "Cataclysmic Spl." else if (turret.level >= 5) "Thermal Blast" else "Locked (Lvl 5)"
-                                    val pierceVal = when {
-                                        turret.level >= 10 -> "5 Targets"
-                                        turret.level >= 6 -> "3 Targets"
-                                        turret.level >= 3 -> "2 Targets"
-                                        else -> "1 Target"
-                                    }
+                                    val projVal = 1
+                                    val splashVal = if (turretItem.turretType == com.example.model.TurretType.PLASMA) "Thermal Blast" else "None"
+                                    val pierceVal = if (turretItem.turretType == com.example.model.TurretType.PLASMA || turretItem.turretType == com.example.model.TurretType.TESLA) "3 Targets" else "1 Target"
 
                                     val statsList = listOf(
-                                        "Bullet Kinetic Damage" to dmgVal.toInt().toString(),
-                                        "Automated Firing Range" to "${rngeVal.toInt()}m",
-                                        "Weapon Fire Cycle" to "${rateVal}ms",
+                                        "Bullet Kinetic Damage" to (turretItem.damageBase * (1f + (turret.level - 1) * 0.25f)).toInt().toString(),
+                                        "Automated Firing Range" to "${turretItem.range.toInt()}m",
+                                        "Weapon Fire Rate" to "${turretItem.fireRateBase}/s",
                                         "Active Projectile Streams" to "$projVal streams",
                                         "Target Pierces Allowed" to pierceVal,
                                         "Radial Explosive Splash" to splashVal
@@ -2104,79 +2001,141 @@ fun UIOverlay(viewModel: GameViewModel) {
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Next Level Unlock Highlight
-                            val nextUnlockMsg = when {
-                                turret.level < 3 -> "Lvl 3 Upgrade: Unlocks Piercing bullets (+1 pass-through target)"
-                                turret.level == 3 -> "Lvl 4 Upgrade: Unlocks Twin Barrels (double weapon firepower!)"
-                                turret.level == 4 -> "Lvl 5 Upgrade: Unlocks Plasma Explosion Splash (50% splash damage)"
-                                turret.level == 5 -> "Lvl 6 Upgrade: Unlocks Heavy Piercing (+2 pass-through targets)"
-                                turret.level in 6..7 -> "Lvl 8 Upgrade: Unlocks Triple Emitters (3 fan-shaped spreading bullet streams!)"
-                                turret.level == 8 -> "Lvl 9 Upgrade: Unlocks Cataclysmic Splash (+50% blast radius, 75% splash)"
-                                turret.level == 9 -> "Lvl 10 Upgrade: Unlocks Absolute Overdrive Piercing (5 pass-through targets!)"
-                                else -> "Maximum efficiency threshold reached! Additional levels increase core stats scale."
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            // Player Current Money Indicators
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "YOUR BALANCE:",
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${viewModel.lifetimeCoins} 🪙",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
 
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            // 1. DISMANTLE BUTTON
                             Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0x0E00FFCC)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.dismantleTurret(slotId)
+                                        viewModel.selectedTurretSlotId = null
+                                    }
+                                    .border(1.dp, Color(0xFFEF5350).copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                                colors = CardDefaults.cardColors(containerColor = Color(0x33FF1744)), // Dark red base
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("💡", fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
-                                    Text(
-                                        text = nextUnlockMsg,
-                                        color = Color(0xFFE2E8F0),
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        lineHeight = 11.sp
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color(0xFFFF1744).copy(alpha = 0.2f), CircleShape)
+                                            .border(1.dp, Color(0xFFFF1744).copy(alpha = 0.5f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("♻️", fontSize = 16.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            "DISMANTLE (50% REFUND)",
+                                            color = Color(0xFFFF1744),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "You will receive 50% of the upgrade cost back.",
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 9.sp
+                                        )
+                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            val upgradeCost = viewModel.getTurretUpgradeCost(turret)
-                            val canUpgrade = viewModel.lifetimeCoins >= upgradeCost
-
-                            // Single Upgrade Button
-                            Button(
-                                onClick = {
-                                    viewModel.upgradeTurret(slotId)
-                                    viewModel.selectedTurretSlotId = null
-                                },
-                                enabled = canUpgrade,
+                            // 2. UPGRADE BUTTON
+                            val upgradeCost = viewModel.getTurretUpgradeCost(turret.level)
+                            val canAffordUpgrade = viewModel.lifetimeCoins >= upgradeCost
+                            
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("turret_upgrade"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = glowColor,
-                                    disabledContainerColor = Color(0x33FFFFFF)
+                                    .clickable(enabled = canAffordUpgrade) { viewModel.upgradeTurret(slotId) }
+                                    .shadow(4.dp, RoundedCornerShape(8.dp)),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (canAffordUpgrade) Color(0xED131824) else Color(0xD80E1119)
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (canAffordUpgrade) {
+                                        Brush.linearGradient(colors = listOf(glowColor, glowColor.copy(alpha = 0.35f)))
+                                    } else {
+                                        SolidColor(Color.White.copy(alpha = 0.08f))
+                                    }
+                                )
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 ) {
-                                    Text(
-                                        text = "🚀 UPGRADE TO LVL ${turret.level + 1}",
-                                        color = if (canUpgrade) Color.Black else Color.White.copy(alpha = 0.4f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                    Text(
-                                        text = "$$upgradeCost",
-                                        color = if (canUpgrade) Color.Black else Color.White.copy(alpha = 0.4f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(glowColor.copy(alpha = 0.15f))
+                                                .border(0.5.dp, glowColor.copy(alpha = 0.35f), RoundedCornerShape(4.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("▲", color = glowColor, fontSize = 14.sp)
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("UPGRADE", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                            Text("Increase turret fire rate", color = Color.White.copy(alpha=0.7f), fontSize = 10.sp)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("LVL ${turret.level} → LVL ${turret.level + 1} (Speed +25%)", color = glowColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(24.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                if (canAffordUpgrade) Brush.verticalGradient(listOf(Color(0xFF0F3A22), Color(0xFF144D2E))) else SolidColor(Color(0x15FFFFFF))
+                                            )
+                                            .border(0.5.dp, if (canAffordUpgrade) Color(0xFF2DCE89) else Color.Transparent, RoundedCornerShape(4.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            if (canAffordUpgrade) Text("⚡", color = Color(0xFF2DCE89), fontSize = 10.sp)
+                                            Text("${upgradeCost} Coins", color = if (canAffordUpgrade) Color(0xFF2DCE89) else Color.White.copy(alpha=0.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                             }
@@ -2196,20 +2155,23 @@ fun OutpostUpgradeButton(
     iconLabel: String,
     themeColor: Color,
     canAfford: Boolean,
+    isMaxed: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = canAfford) { onClick() }
+            .clickable(enabled = canAfford && !isMaxed) { onClick() }
             .shadow(4.dp, RoundedCornerShape(8.dp)),
         colors = CardDefaults.cardColors(
-            containerColor = if (canAfford) Color(0xED131824) else Color(0xD80E1119)
+            containerColor = if (isMaxed) Color(0xD80E1119) else if (canAfford) Color(0xED131824) else Color(0xD80E1119)
         ),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(
             1.dp,
-            if (canAfford) {
+            if (isMaxed) {
+                SolidColor(Color(0x3300E676))
+            } else if (canAfford) {
                 Brush.linearGradient(
                     colors = listOf(themeColor, themeColor.copy(alpha = 0.35f))
                 )
@@ -2262,8 +2224,8 @@ fun OutpostUpgradeButton(
                         maxLines = 1
                     )
                     Text(
-                        text = "LVL $level".uppercase(),
-                        color = themeColor.copy(alpha = 0.85f),
+                        text = if (isMaxed) "MAX LEVEL!" else "LVL $level",
+                        color = if (isMaxed) Color(0xFF00FFCC) else themeColor.copy(alpha = 0.85f),
                         fontSize = 7.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
@@ -2278,7 +2240,9 @@ fun OutpostUpgradeButton(
                     .height(18.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(
-                        if (canAfford) {
+                        if (isMaxed) {
+                            SolidColor(Color(0xFF0F3A22))
+                        } else if (canAfford) {
                             Brush.verticalGradient(
                                 colors = listOf(Color(0xFF0F3A22), Color(0xFF144D2E))
                             )
@@ -2288,30 +2252,40 @@ fun OutpostUpgradeButton(
                     )
                     .border(
                         width = 0.5.dp,
-                        color = if (canAfford) Color(0xFF2DCE89) else Color.Transparent,
+                        color = if (isMaxed) Color(0xFF00FFCC) else if (canAfford) Color(0xFF2DCE89) else Color.Transparent,
                         shape = RoundedCornerShape(4.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    if (canAfford) {
-                        Text(
-                            text = "⚡",
-                            color = Color(0xFF2DCE89),
-                            fontSize = 7.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                if (isMaxed) {
                     Text(
-                        text = "$$cost",
-                        color = if (canAfford) Color(0xFF2DCE89) else Color.White.copy(alpha = 0.4f),
+                        text = "MAXED OUT",
+                        color = Color(0xFF00FFCC),
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace
                     )
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        if (canAfford) {
+                            Text(
+                                text = "⚡",
+                                color = Color(0xFF2DCE89),
+                                fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "$cost 🪙",
+                            color = if (canAfford) Color(0xFF2DCE89) else Color.White.copy(alpha = 0.4f),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
@@ -2423,7 +2397,7 @@ fun VirtualJoystick(modifier: Modifier = Modifier) {
 }
 
 enum class MenuTab {
-    HOME, UPGRADES, STATS, SETTINGS
+    HOME, LOADOUT, UPGRADES, STATS, SETTINGS
 }
 
 @Composable
@@ -2548,6 +2522,7 @@ fun MenuOverlay(viewModel: GameViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(bottom = 64.dp) // Leave exact space for bottom navigation bar
         ) {
             // Header: Display the game title "Zombie Outpost" at the top center.
@@ -2558,7 +2533,7 @@ fun MenuOverlay(viewModel: GameViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "ZOMBIE OUTPOST",
+                    text = "DEADWAVE SURVIVAL",
                     color = Color(0xFF00FFCC),
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Black,
@@ -2592,6 +2567,7 @@ fun MenuOverlay(viewModel: GameViewModel) {
                 Crossfade(targetState = selectedTab, label = "TabChange") { tab ->
                     when (tab) {
                         MenuTab.HOME -> HomeTabLayout(viewModel)
+                        MenuTab.LOADOUT -> LoadoutTabLayout(viewModel)
                         MenuTab.UPGRADES -> UpgradesTabLayout(viewModel)
                         MenuTab.STATS -> StatsTabLayout(viewModel)
                         MenuTab.SETTINGS -> SettingsTabLayout(
@@ -2608,20 +2584,23 @@ fun MenuOverlay(viewModel: GameViewModel) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(64.dp),
+                .padding(bottom = 12.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .windowInsetsPadding(WindowInsets.safeDrawing),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF070B12)),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
             border = BorderStroke(1.dp, Color(0xFF00FFCC).copy(alpha = 0.15f))
         ) {
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.navigationBars),
+                    .fillMaxWidth()
+                    .height(64.dp),
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val tabs = listOf(
                     Triple(MenuTab.HOME, "🏰", "HOME"),
+                    Triple(MenuTab.LOADOUT, "🎒", "LOADOUT"),
                     Triple(MenuTab.UPGRADES, "🚀", "UPGRADES"),
                     Triple(MenuTab.STATS, "📊", "STATS"),
                     Triple(MenuTab.SETTINGS, "⚙️", "SETTINGS")
@@ -2632,7 +2611,10 @@ fun MenuOverlay(viewModel: GameViewModel) {
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clickable { selectedTab = tab }
+                            .clickable { 
+                                com.example.audio.GameAudioSynth.playButtonClick()
+                                selectedTab = tab 
+                            }
                             .testTag("tab_${label.lowercase()}"),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
@@ -2697,7 +2679,10 @@ fun MenuOverlay(viewModel: GameViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
-                                onClick = { showResetConfirmation = false },
+                                onClick = { 
+                                    com.example.audio.GameAudioSynth.playButtonClick()
+                                    showResetConfirmation = false 
+                                },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B3A4F)),
                                 shape = RoundedCornerShape(8.dp)
@@ -2817,185 +2802,390 @@ fun HomeTabLayout(viewModel: GameViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        // Large high-contrast top records card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0x730B1220)),
-            border = BorderStroke(1.dp, Color(0xFF1E293B)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Row(
+        // Game Modes Section
+        Text(
+            text = "SELECT GAME MODE",
+            color = Color.White,
+            fontWeight = FontWeight.Black,
+            fontSize = 16.sp,
+            modifier = Modifier.align(Alignment.Start)
+        )
+
+        val modes = com.example.viewmodel.GameMode.entries.toTypedArray()
+        for (mode in modes) {
+            val isSelected = viewModel.currentGameMode == mode
+            
+            val isLocked = when(mode) {
+                com.example.viewmodel.GameMode.NORMAL -> false
+                com.example.viewmodel.GameMode.HARDCORE -> viewModel.highestWaveNormal < 50
+                com.example.viewmodel.GameMode.NIGHTMARE -> viewModel.highestWaveHardcore < 100
+            }
+
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+                    .let {
+                        if (!isLocked) {
+                            it.clickable {
+                                com.example.audio.GameAudioSynth.playButtonClick()
+                                viewModel.currentGameMode = mode
+                            }
+                        } else it
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF00FFCC).copy(alpha = 0.2f) else if (isLocked) Color.Red.copy(alpha = 0.1f) else Color(0x400C121C)
+                ),
+                border = BorderStroke(
+                    if (isSelected) 2.dp else 1.dp,
+                    if (isSelected) Color(0xFF00FFCC) else if (isLocked) Color.Red.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.04f)
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("RECORD WAVE", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
-                    Text(
-                        text = "WAVE ${viewModel.highestWaveReached}",
-                        color = Color(0xFFFF9800),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                Divider(
-                    modifier = Modifier
-                        .height(35.dp)
-                        .width(1.dp)
-                        .background(Color.White.copy(alpha = 0.12f))
-                )
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("COIN BANK", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
-                    Text(
-                        text = "$${viewModel.lifetimeCoins}",
-                        color = Color(0xFFFFD700),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            }
-        }
-
-        // Game State Quick Overview
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0x400C121C)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "SURVIVOR STATUS & OUTPOST SUPPORT RATIOS", 
-                    color = Color(0xFFBACADB), 
-                    fontSize = 10.sp, 
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 0.5.sp
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Survivor Max HP:", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                    Text("${viewModel.baseMaxHp.toInt()} HP (Lvl ${viewModel.hpLevel})", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Default Turret Base:", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                    Text("Active (Lvl 1 Gatling)", fontSize = 11.sp, color = Color(0xFFFFB300), fontWeight = FontWeight.Bold)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Auto-Regen Rate:", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                    val regenVal = if (viewModel.regenLevel <= 0) 0f else viewModel.regenLevel * 0.5f
-                    Text("${"%.2f".format(regenVal)} HP/s", fontSize = 11.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Big action buttons center column
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // CONTINUE BUTTON (Conditional)
-            if (viewModel.canContinueRun) {
-                Button(
-                    onClick = { viewModel.continueGame() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .shadow(12.dp, RoundedCornerShape(16.dp))
-                        .testTag("continue_run_button"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00E676)
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(2.dp, Color.White)
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text("🎮", fontSize = 20.sp)
-                        Column(horizontalAlignment = Alignment.Start) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = mode.displayName.uppercase(),
+                            color = if (isLocked) Color.Red.copy(alpha = 0.8f) else Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = mode.desc,
+                            color = if (isLocked) Color.White.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.7f),
+                            fontSize = 11.sp
+                        )
+                        if (isLocked) {
                             Text(
-                                text = "RESUME RUN",
-                                color = Color.Black,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Black
+                                text = if (mode == com.example.viewmodel.GameMode.HARDCORE) "Requirement: Wave 50+ in Normal Mode" else "Requirement: Wave 100+ in Hardcore Mode",
+                                color = Color.Red,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 2.dp)
                             )
+                        } else {
                             Text(
-                                text = "WAVE ${viewModel.savedWave} • preserved states",
-                                color = Color.Black.copy(alpha = 0.7f),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                text = "Reward: 15 Coins + $${mode.reward} per zombie",
+                                color = Color(0xFF00FFCC),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                     }
-                }
-            }
-
-            // START RUN BUTTON
-            Button(
-                onClick = { viewModel.startGame() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .shadow(8.dp, RoundedCornerShape(16.dp))
-                    .testTag("start_run_button"),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFCC3300)
-                ),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.35f))
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("💀", fontSize = 18.sp)
-                    Text(
-                        text = "NEW SURVIVAL DEPLOYMENT",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    if (isLocked) {
+                        Text("🔒", fontSize = 24.sp)
+                    } else if (isSelected) {
+                        Text("✅", fontSize = 24.sp)
+                    }
                 }
             }
         }
 
-        // Brief instruction card matching design guides
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0x2B000000)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // CONTINUE BUTTON (Conditional)
+        if (viewModel.canContinueRun) {
+            Button(
+                onClick = { viewModel.continueGame() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .shadow(12.dp, RoundedCornerShape(16.dp))
+                    .testTag("continue_run_button"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF00E676)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(2.dp, Color.White)
             ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("🎮", fontSize = 20.sp)
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = "RESUME RUN",
+                            color = Color.Black,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "WAVE ${viewModel.savedWave}",
+                            color = Color.Black.copy(alpha = 0.7f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+        }
+
+        // START RUN BUTTON
+        Button(
+            onClick = { viewModel.startGame() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .shadow(8.dp, RoundedCornerShape(16.dp))
+                .testTag("start_run_button"),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFCC3300)
+            ),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.35f))
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("💀", fontSize = 18.sp)
                 Text(
-                    text = "COMMAND ARCHIVES MANUAL LORE", 
-                    color = Color(0xFF90A4AE), 
-                    fontSize = 10.sp, 
+                    text = "START DEPLOYMENT",
+                    color = Color.White,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Black
                 )
-                InstructionRow(icon = Icons.Default.Info, text = "Dodge and maneuver command vessel via primary bottom-left joystick.")
-                InstructionRow(icon = Icons.Default.Info, text = "Central cannon fires automatically at closest active threats within range.")
-                InstructionRow(icon = Icons.Default.Info, text = "Fortify sector security: tap cross corners to load customized automated turrets.")
-                InstructionRow(icon = Icons.Default.Info, text = "Permanent upgrade levels are preserved locally and saved persistently to Room.")
             }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+    }
+}
+
+@Composable
+fun LoadoutTabLayout(viewModel: GameViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = {
+                    com.example.audio.GameAudioSynth.playButtonClick()
+                    viewModel.selectedLoadoutTab = "WEAPONS"
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.selectedLoadoutTab == "WEAPONS") Color(0xFF00FFCC) else Color(0xFF2B3A4F)
+                )
+            ) {
+                Text("WEAPONS", color = if (viewModel.selectedLoadoutTab == "WEAPONS") Color.Black else Color.White)
+            }
+            Button(
+                onClick = {
+                    com.example.audio.GameAudioSynth.playButtonClick()
+                    viewModel.selectedLoadoutTab = "TURRETS"
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.selectedLoadoutTab == "TURRETS") Color(0xFF00FFCC) else Color(0xFF2B3A4F)
+                )
+            ) {
+                Text("TURRETS", color = if (viewModel.selectedLoadoutTab == "TURRETS") Color.Black else Color.White)
+            }
+        }
+
+        if (viewModel.selectedLoadoutTab == "WEAPONS") {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val subTabs = listOf("PISTOLS", "SHOTGUNS", "RIFLES", "MINIGUNS")
+                subTabs.forEach { tab ->
+                    val color = if (viewModel.selectedLoadoutSubTab == tab) Color(0xFFFF9800) else Color(0x400C121C)
+                    Button(
+                        onClick = {
+                            com.example.audio.GameAudioSynth.playButtonClick()
+                            viewModel.selectedLoadoutSubTab = tab
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = color)
+                    ) {
+                        Text(tab, fontSize = 12.sp, color = Color.White)
+                    }
+                }
+            }
+
+            val items = when (viewModel.selectedLoadoutSubTab) {
+                "PISTOLS" -> com.example.model.LoadoutData.PISTOLS
+                "SHOTGUNS" -> com.example.model.LoadoutData.SHOTGUNS
+                "RIFLES" -> com.example.model.LoadoutData.RIFLES
+                "MINIGUNS" -> com.example.model.LoadoutData.MINIGUNS
+                else -> emptyList()
+            }
+
+            items.forEach { item ->
+                val isOwned = viewModel.ownedWeapons.contains(item.id) || item.isFree
+                val isEquipped = when (item.category) {
+                    com.example.model.WeaponCategory.PISTOLS -> viewModel.equippedPistol == item.id
+                    com.example.model.WeaponCategory.SHOTGUNS -> viewModel.equippedShotgun == item.id
+                    com.example.model.WeaponCategory.RIFLES -> viewModel.equippedRifle == item.id
+                    com.example.model.WeaponCategory.MINIGUNS -> viewModel.equippedMinigun == item.id
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x400C121C)),
+                    border = BorderStroke(1.dp, if (isEquipped) Color(0xFF00FFCC) else Color.White.copy(alpha = 0.1f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(item.icon, fontSize = 24.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(item.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("DMG: ${item.damageBase} | Fire Rate: ${item.fireRateBase}/s | Range: ${item.range}", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (isEquipped) {
+                            Button(
+                                onClick = { },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                            ) {
+                                Text("EQUIPPED", color = Color.Black)
+                            }
+                        } else if (isOwned) {
+                            Button(
+                                onClick = {
+                                    com.example.audio.GameAudioSynth.playButtonClick()
+                                    when (item.category) {
+                                        com.example.model.WeaponCategory.PISTOLS -> viewModel.equippedPistol = item.id
+                                        com.example.model.WeaponCategory.SHOTGUNS -> viewModel.equippedShotgun = item.id
+                                        com.example.model.WeaponCategory.RIFLES -> viewModel.equippedRifle = item.id
+                                        com.example.model.WeaponCategory.MINIGUNS -> viewModel.equippedMinigun = item.id
+                                    }
+                                    viewModel.savePersistentStatsPublic()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B3A4F))
+                            ) {
+                                Text("EQUIP", color = Color.White)
+                            }
+                        } else {
+                            Button(
+                                    onClick = {
+                                        if (viewModel.bankDollars >= item.priceDollars) {
+                                            com.example.audio.GameAudioSynth.playUpgrade()
+                                            viewModel.bankDollars -= item.priceDollars
+                                            viewModel.ownedWeapons.add(item.id)
+                                            com.example.audio.GameAudioSynth.playPurchase()
+                                            viewModel.savePersistentStatsPublic()
+                                        } else {
+                                            com.example.audio.GameAudioSynth.playButtonClick() // error sound
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.bankDollars >= item.priceDollars) Color(0xFFFF9800) else Color.Red.copy(alpha = 0.5f))
+                                ) {
+                                    Text("BUY $${item.priceDollars}", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // TURRETS
+            com.example.model.LoadoutData.TURRETS.forEach { item ->
+                val isOwned = viewModel.ownedTurrets.contains(item.id) || item.priceDollars == 0L
+                val isEquipped = viewModel.equippedTurretsCSV.split(",").contains(item.id)
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x400C121C)),
+                    border = BorderStroke(1.dp, if (isEquipped) Color(0xFF00FFCC) else Color.White.copy(alpha = 0.1f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(item.icon, fontSize = 24.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(item.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("Type: ${item.turretType} | DMG: ${item.damageBase} | Fire Rate: ${item.fireRateBase}/s", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (isEquipped) {
+                            Button(
+                                onClick = { },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                            ) {
+                                Text("EQUIPPED", color = Color.Black)
+                            }
+                        } else if (isOwned) {
+                            Button(
+                                onClick = {
+                                    com.example.audio.GameAudioSynth.playButtonClick()
+                                    viewModel.equippedTurretsCSV = item.id
+                                    viewModel.savePersistentStatsPublic()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B3A4F))
+                            ) {
+                                Text("EQUIP", color = Color.White)
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    if (viewModel.bankDollars >= item.priceDollars) {
+                                        com.example.audio.GameAudioSynth.playUpgrade()
+                                        viewModel.bankDollars -= item.priceDollars
+                                        viewModel.ownedTurrets.add(item.id)
+                                        com.example.audio.GameAudioSynth.playPurchase()
+                                        viewModel.savePersistentStatsPublic()
+                                    } else {
+                                        com.example.audio.GameAudioSynth.playButtonClick()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.bankDollars >= item.priceDollars) Color(0xFFFF9800) else Color.Red.copy(alpha = 0.5f))
+                            ) {
+                                Text("BUY $${item.priceDollars}", color = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(100.dp))
     }
 }
 
@@ -3052,7 +3242,7 @@ fun UpgradesTabLayout(viewModel: GameViewModel) {
             ) {
                 Column {
                     Text(
-                        "PERSISTENT COIN BANK BALANCE",
+                        "PERSISTENT BANK BALANCE",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFFBACADB)
@@ -3064,10 +3254,10 @@ fun UpgradesTabLayout(viewModel: GameViewModel) {
                     )
                 }
                 Text(
-                    "$$" + viewModel.lifetimeCoins,
+                    "$${viewModel.bankDollars}",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color(0xFFFFD54F),
+                    color = Color(0xFF00FFCC),
                     fontFamily = FontFamily.Monospace
                 )
             }
@@ -3097,24 +3287,26 @@ fun UpgradesTabLayout(viewModel: GameViewModel) {
         // Upgrade Gun (Disabled in main menu)
         PersistentUpgradeRowBetter(
             title = "WEAPON TIER (GUN)",
-            desc = "Increase core weapon fire rate & bullet damage",
+            desc = if (viewModel.gunLevel >= 4) "Maximum level reached." else "Increase core weapon fire rate & bullet damage",
             level = viewModel.gunLevel,
             cost = viewModel.gunCost,
             iconLabel = "🔫",
             themeColor = Color(0xFF29B6F6),
             canAfford = false, // Must buy in-game
+            isMaxed = viewModel.gunLevel >= 4,
             onClick = { }
         )
 
         // Upgrade Regeneration (Disabled in main menu)
         PersistentUpgradeRowBetter(
             title = "BIOLOGICAL REGENERATION",
-            desc = "Passively regenerate player health over time (+0.5 HP/sec)",
+            desc = if (viewModel.regenLevel >= 5) "Maximum level reached." else "Passively regenerate player health over time (+0.5 HP/sec)",
             level = viewModel.regenLevel,
             cost = viewModel.regenCost,
             iconLabel = "➕",
             themeColor = Color(0xFF66BB6A),
             canAfford = false, // Must buy in-game
+            isMaxed = viewModel.regenLevel >= 5,
             onClick = { }
         )
 
@@ -3132,20 +3324,21 @@ fun PersistentUpgradeRowBetter(
     iconLabel: String,
     themeColor: Color,
     canAfford: Boolean,
+    isMaxed: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = canAfford) { onClick() }
+            .clickable(enabled = canAfford && !isMaxed) { onClick() }
             .testTag("persistent_upgrade_row_${title.take(5).replace(" ", "_").lowercase()}"),
         colors = CardDefaults.cardColors(
-            containerColor = if (canAfford) Color(0xFF131D31) else Color(0x660B1220)
+            containerColor = if (isMaxed) Color(0xD80E1119) else if (canAfford) Color(0xFF131D31) else Color(0x660B1220)
         ),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(
-            if (canAfford) 1.5.dp else 1.dp,
-            if (canAfford) themeColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.05f)
+            if (canAfford && !isMaxed) 1.5.dp else 1.dp,
+            if (isMaxed) Color(0x3300FFCC) else if (canAfford) themeColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.05f)
         )
     ) {
         Row(
@@ -3168,24 +3361,26 @@ fun PersistentUpgradeRowBetter(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = if (canAfford) Color.White else Color.White.copy(alpha = 0.5f),
+                    color = if (canAfford || isMaxed) Color.White else Color.White.copy(alpha = 0.5f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Black
                 )
                 // Level transition display requirements
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Level $level",
-                        color = themeColor,
+                        text = if (isMaxed) "MAX LEVEL ($level)" else "Level $level",
+                        color = if (isMaxed) Color(0xFF00FFCC) else themeColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = " ➜ Lvl ${level + 1}",
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (!isMaxed) {
+                        Text(
+                            text = " ➜ Lvl ${level + 1}",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -3206,7 +3401,7 @@ fun PersistentUpgradeRowBetter(
                     fontWeight = FontWeight.Black
                 )
                 Text(
-                    text = "$$cost",
+                    text = "${cost} 🪙",
                     color = if (canAfford) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.3f),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Black,
@@ -3259,7 +3454,7 @@ fun StatsTabLayout(viewModel: GameViewModel) {
         // Stat 3: Total Money Earned
         StatBlockItem(
             title = "Total Money Earned",
-            value = "$${viewModel.totalMoneyEarned}",
+            value = "${viewModel.totalMoneyEarned}",
             desc = "Cumulative tactical coin generation",
             themeColor = Color(0xFFFFD700),
             icon = "🪙"
@@ -3534,7 +3729,10 @@ fun SettingsTabLayout(
                                     if (selected) Color(0xFF00FFCC) else Color.Transparent,
                                     RoundedCornerShape(6.dp)
                                 )
-                                .clickable { viewModel.qualitySetting = setting }
+                                .clickable { 
+                                    com.example.audio.GameAudioSynth.playButtonClick()
+                                    viewModel.qualitySetting = setting 
+                                }
                                 .testTag("quality_tab_${setting.lowercase()}"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -3574,7 +3772,10 @@ fun SettingsTabLayout(
                     lineHeight = 11.sp
                 )
                 Button(
-                    onClick = { viewModel.claimTestCoins() },
+                    onClick = { 
+                        com.example.audio.GameAudioSynth.playButtonClick()
+                        viewModel.claimTestCoins() 
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -3608,7 +3809,10 @@ fun SettingsTabLayout(
                     lineHeight = 11.sp
                 )
                 Button(
-                    onClick = { onTriggerReset() },
+                    onClick = { 
+                        com.example.audio.GameAudioSynth.playButtonClick()
+                        onTriggerReset() 
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -3787,6 +3991,9 @@ fun InstructionRow(icon: ImageVector, text: String) {
 
 @Composable
 fun GameOverOverlay(viewModel: GameViewModel) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -3839,39 +4046,72 @@ fun GameOverOverlay(viewModel: GameViewModel) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                AccomplishmentRow(label = "WAVES COMPLETED", valStr = "${viewModel.currentWave - 1}", valCol = Color.White)
-                AccomplishmentRow(label = "COINS HARVESTED", valStr = "$${viewModel.runEarnings}", valCol = Color(0xFFFFD700))
-                AccomplishmentRow(label = "TOTAL BANK BALANCE", valStr = "$${viewModel.lifetimeCoins}", valCol = Color(0xFF00FFCC))
+                AccomplishmentRow(label = "WAVE REACHED", valStr = "${viewModel.currentWave}", valCol = Color.White)
+                AccomplishmentRow(label = "ZOMBIES KILLED", valStr = "${viewModel.runZombiesKilled}", valCol = Color(0xFFEF5350))
+                AccomplishmentRow(label = "COINS EARNED", valStr = "${viewModel.runEarnings} 🪙", valCol = Color(0xFFFFD700))
+                AccomplishmentRow(label = "DOLLARS EARNED", valStr = "$${viewModel.runDollarsEarned}", valCol = Color(0xFF00FFCC))
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (!viewModel.reviveUsedThisRun) {
+                    Button(
+                        onClick = {
+                            if (activity != null) {
+                                AdManager.showRewardedAd(
+                                    activity,
+                                    onRewarded = { viewModel.revive() },
+                                    onAdDismissed = {}
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("revive_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("REVIVE (Watch Ad)", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
+                }
+
+                if (!viewModel.doubleRewardsClaimedThisRun) {
+                    Button(
+                        onClick = {
+                            if (activity != null) {
+                                AdManager.showRewardedAd(
+                                    activity,
+                                    onRewarded = { viewModel.claimDoubleRewardsAndExit() },
+                                    onAdDismissed = {}
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("double_rewards_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF29B6F6)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("2X REWARDS (Watch Ad)", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
+                }
+
                 OutlinedButton(
                     onClick = { viewModel.exitToMenu() },
                     modifier = Modifier
-                        .weight(1f)
-                        .height(50.dp)
-                        .testTag("exit_menu_button"),
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("no_thanks_button"),
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.2f))
                 ) {
-                    Text("MAIN MENU", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = { viewModel.startGame() },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(50.dp)
-                        .testTag("play_again_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("PLAY AGAIN", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    Text("NO THANKS", color = Color.White.copy(alpha = 0.7f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }
@@ -3906,7 +4146,7 @@ fun BetweenWavesAnnouncement(
     countdown: Float
 ) {
     val nextWave = wave + 1
-    val isNextBossSpike = (nextWave % 10 == 0)
+    val isNextBossSpike = (nextWave == 25 || nextWave == 50 || nextWave == 75 || nextWave == 100)
     val isNextHorde = (nextWave % 5 == 0 && !isNextBossSpike)
 
     Box(

@@ -3,6 +3,7 @@ package com.example
 import android.app.Application
 import com.example.data.AppDatabase
 import com.example.data.GameStatsRepository
+import com.google.android.gms.ads.MobileAds
 
 class MyApplication : Application() {
     lateinit var repository: GameStatsRepository
@@ -11,6 +12,7 @@ class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        MobileAds.initialize(this) {}
         val database = AppDatabase.getDatabase(this)
         repository = GameStatsRepository(database.gameStatsDao())
     }

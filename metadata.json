@@ -1,5 +1,5 @@
 {
-  "name": "Zombie Outpost",
+  "name": "Deadwave Survival",
   "description": "A 2D top-down zombie survival base defense game optimized for Android with smooth performance, weapon progression, and procedural waves.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
